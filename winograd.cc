@@ -6,6 +6,10 @@
 
 #include "utils.h"
 
+#pragma GCC optimize(3,"Ofast","inline") //O3优化
+
+#include <omp.h> //OpenMP库
+
 void image_transform(float *__restrict__ packed_image,
                      float *__restrict__ V,
                      const V_shape_t vs,
@@ -17,7 +21,8 @@ void image_transform(float *__restrict__ packed_image,
   V_tensor_t V_tensor = (V_tensor_t)V;
 
   float z0, z1, z2, z3, z4, z5, z6;
-
+  
+  #pragma omp parallel for num_threads(64) //64线程
   for (int64_t idx = 0; idx < collapsed_dim_size; idx++) {
     for (int64_t w = 0; w < ti.tile_in_w; ++w) {
       z6 = packed_image_tensor[0][w][idx];
@@ -67,7 +72,7 @@ void image_transform(float *__restrict__ packed_image,
       V_tensor[4][w][idx] = z4;
       V_tensor[5][w][idx] = z5;
     }
-
+    
     for (int64_t h = 0; h < ti.tile_in_h; ++h) {
       z6 = V_tensor[h][0][idx];
 
@@ -131,6 +136,7 @@ void filter_transform(float *__restrict__ packed_filter,
 
   float z0, z1, z2, z3, z4, z5, z6;
 
+  #pragma omp parallel for num_threads(64) //一样
   for (int64_t idx = 0; idx < collapsed_dim_size; idx++) {
     for (int64_t w = 0; w < fs.w; ++w) {
       z6 = packed_filter_tensor[0][w][idx];
@@ -208,6 +214,7 @@ void output_transform(float *__restrict__ M,
   Y_tensor_t Y_tensor = (Y_tensor_t)Y;
   float z0, z1, z2, z3, z4;
 
+  #pragma omp parallel for num_threads(64) //一样
   for (int64_t idx = 0; idx < collapsed_dim_size; idx++) {
     for (int64_t w = 0; w < ti.tile_in_w; ++w) {
       z4 = M_tensor[0][w][idx];
@@ -292,7 +299,8 @@ void filter_packing(float *__restrict__ filter, float *__restrict__ packed_filte
   typedef float(*packed_filter_tensor_t)[fs.w][fs.oc][fs.ic];
   filter_tensor_t filter_tensor = (filter_tensor_t)filter;
   packed_filter_tensor_t packed_filter_tensor = (packed_filter_tensor_t)packed_filter;
-
+  
+  #pragma omp parallel for collapse(2) //2层
   for (int64_t h = 0; h < fs.h; ++h)
     for (int64_t w = 0; w < fs.w; ++w)
       for (int64_t oc = 0; oc < fs.oc; oc++)
@@ -356,12 +364,15 @@ void sgemm(const int64_t M, const int64_t N, const int64_t K, float *A, float *B
   B_tensor_t B_tensor = (B_tensor_t)B;
   C_tensor_t C_tensor = (C_tensor_t)C;
 
+  #pragma omp parallel for num_threads(128) //调用128线程
   for (int64_t m = 0; m < M; ++m) {
     for (int64_t n = 0; n < N; ++n) {
-      C_tensor[n][m] = 0;
+      float sum = 0;
+      #pragma omp simd reduction(+:sum) //SIMD优化
       for (int64_t k = 0; k < K; ++k) {
-        C_tensor[n][m] += A_tensor[m][k] * B_tensor[n][k];
+        sum += A_tensor[m][k] * B_tensor[n][k];
       }
+      C_tensor[n][m] = sum;
     }
   }
 }
@@ -396,6 +407,7 @@ void winograd_convolution(
   image_packing(image, packed_image, is, ti);
   image_transform(packed_image, V, vs, ti, vs.ic * vs.num_tiles);
 
+  #pragma omp parallel for num_threads(64) //64线程
   for (int64_t h = 0; h < ti.tile_in_h; ++h) {
     for (int64_t w = 0; w < ti.tile_in_w; ++w) {
       typedef float(*U_tensor_t)[ti.tile_in_w][us.oc][us.ic];
