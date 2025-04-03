@@ -276,3 +276,9 @@ eval `spack load --sh cuda`
 ```bash
 export PATH="/data/spack/bin:$PATH"
 ```
+
+
+##环境依赖
+```
+export OMP_NUM_THREADS=64
+```
