@@ -372,8 +372,7 @@ void sgemm(const int64_t M, const int64_t N, const int64_t K, float *A, float *B
   A_tensor_t A_tensor = (A_tensor_t)A;
   B_tensor_t B_tensor = (B_tensor_t)B;
   C_tensor_t C_tensor = (C_tensor_t)C;
-
-  #pragma omp parallel for //并行化
+  #pragma omp parallel for collapse(2)
   for (int64_t m = 0; m < M; ++m) {
     for (int64_t n = 0; n < N; ++n) {
       float sum = 0;
@@ -416,7 +415,7 @@ void winograd_convolution(
   image_packing(image, packed_image, is, ti);
   image_transform(packed_image, V, vs, ti, vs.ic * vs.num_tiles);
 
-  #pragma omp parallel for //并行化
+  #pragma omp parallel for collapse(2) //2层
   for (int64_t h = 0; h < ti.tile_in_h; ++h) {
     for (int64_t w = 0; w < ti.tile_in_w; ++w) {
       typedef float(*U_tensor_t)[ti.tile_in_w][us.oc][us.ic];
